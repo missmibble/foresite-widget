@@ -159,7 +159,7 @@
 <div id="disclaimer">Data sourced from Statistics Canada and CMHC · ForeSite Analytics · SAIT Capstone 2026</div>
 
 <script>
-  const API_URL = "https://s3pshau4s4.execute-api.ca-central-1.amazonaws.com/chat";
+  const STREAM_URL = "https://q4eesjr4jh6tdc2g7krwfm6itm0wgcmh.lambda-url.ca-central-1.on.aws/chat";
 
   const messages = document.getElementById("messages");
   const input    = document.getElementById("question");
@@ -198,7 +198,7 @@
     showTyping();
 
     try {
-      const res = await fetch(API_URL, {
+      const res = await fetch(STREAM_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
@@ -208,10 +208,48 @@
 
       if (!res.ok) {
         addBubble("Sorry, something went wrong (HTTP " + res.status + "). Please try again.", "error");
-      } else {
-        const data = await res.json();
-        addBubble(data.response || "(no response)", "agent");
+        sendBtn.disabled = false;
+        input.focus();
+        return;
       }
+
+      // Create the agent bubble and stream tokens into it
+      const agentBubble = addBubble("", "agent");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split on SSE line boundaries; keep any incomplete trailing line
+        const lines = buffer.split("\n");
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const data = line.slice(6).trim();
+          if (data === "[DONE]") break;
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.token) {
+              agentBubble.textContent += parsed.token;
+              messages.scrollTop = messages.scrollHeight;
+            } else if (parsed.error) {
+              agentBubble.className = "bubble error";
+              agentBubble.textContent = "Error: " + parsed.error;
+            }
+          } catch { /* ignore malformed chunks */ }
+        }
+      }
+
+      if (!agentBubble.textContent) {
+        agentBubble.textContent = "(no response)";
+      }
+
     } catch (err) {
       removeTyping();
       addBubble("Could not reach the server. Check your connection and try again.", "error");
