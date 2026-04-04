@@ -243,7 +243,18 @@
     addBubble(text, "user");
     input.value = "";
     sendBtn.disabled = true;
-    showTyping();
+
+    const thinkingPhrases = [
+      "One moment while I do some digging!",
+      "Let me look that up for you...",
+      "Crunching the numbers, just a sec!",
+      "On it — pulling the data now.",
+      "Give me a moment to check the records.",
+      "Searching through the indicators...",
+      "Just a moment while I query the data.",
+    ];
+    const thinkingBubble = addBubble("", "agent");
+    await typewrite(thinkingBubble, thinkingPhrases[Math.floor(Math.random() * thinkingPhrases.length)]);
 
     try {
       const submitRes = await fetch(`${API_BASE}/chat`, {
@@ -253,7 +264,7 @@
       });
 
       if (!submitRes.ok) {
-        removeTyping();
+        thinkingBubble.remove();
         addBubble("Sorry, something went wrong (HTTP " + submitRes.status + "). Please try again.", "error");
         sendBtn.disabled = false;
         input.focus();
@@ -262,12 +273,12 @@
 
       const { job_id } = await submitRes.json();
       const responseText = await pollForResult(job_id);
-      removeTyping();
+      thinkingBubble.remove();
       const bubble = addBubble("", "agent");
       await typewrite(bubble, responseText);
 
     } catch (err) {
-      removeTyping();
+      thinkingBubble.remove();
       const msg = err.message === "timeout"
         ? "The request took too long. Try a more specific question."
         : "Could not reach the server. Check your connection and try again.";
